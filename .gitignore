@@ -1,0 +1,27 @@
+# Dataset files
+/data/
+
+# Python Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python Cache files
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Model checkpoints and logs
+/models/
+/results/
+*.pkl
+*.keras
+*.h5
+*.npy
+
+# IDE configuration and system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
