@@ -10,15 +10,20 @@ import matplotlib.pyplot as plt
 st.set_page_config(
     page_title="Sona — Audio Authenticator",
     page_icon="🔈",
-    layout="wide"
+    layout="centered"
 )
 
 st.markdown("""
 <style>
+    .block-container {
+        max-width: 620px;
+        padding-top: 3rem;
+        padding-bottom: 3rem;
+    }
     .header-container {
-        padding-bottom: 16px;
+        padding-bottom: 14px;
         border-bottom: 1px solid rgba(128, 128, 128, 0.2);
-        margin-bottom: 28px;
+        margin-bottom: 24px;
     }
     .logo {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -37,7 +42,8 @@ st.markdown("""
     .result-box {
         border-radius: 6px;
         padding: 18px 22px;
-        margin-top: 10px;
+        margin-top: 20px;
+        margin-bottom: 24px;
         border: 1px solid rgba(128, 128, 128, 0.15);
         background-color: rgba(128, 128, 128, 0.04);
     }
@@ -57,13 +63,13 @@ st.markdown("""
         margin-bottom: 6px;
     }
     .result-status {
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 700;
         color: var(--text-color);
         margin-bottom: 4px;
     }
     .result-confidence {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
         color: var(--text-color);
     }
@@ -178,141 +184,128 @@ st.markdown("""
 
 model_data = load_metadata()
 
-col_left, col_right = st.columns([6, 5])
-
 audio_path = None
 is_sample = False
 
-with col_left:
-    st.markdown("### Audio Source")
-    uploaded_file = st.file_uploader("Upload audio recording (WAV format)", type=["wav"])
-    
-    if uploaded_file is not None:
-        st.audio(uploaded_file, format="audio/wav")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-            tmp_file.write(uploaded_file.read())
-            audio_path = tmp_file.name
-    else:
-        mock_fake = "data/mock/fake/deepfake_0.wav"
-        mock_real = "data/mock/real/genuine_0.wav"
-        if os.path.exists(mock_fake) and os.path.exists(mock_real):
-            sample_choice = st.selectbox(
-                "Or choose a sample file to test:",
-                ["None", "Mock Synthetic (Deepfake)", "Mock Authentic (Genuine)"]
-            )
-            if sample_choice == "Mock Synthetic (Deepfake)":
-                audio_path = mock_fake
-                is_sample = True
-            elif sample_choice == "Mock Authentic (Genuine)":
-                audio_path = mock_real
-                is_sample = True
-            if is_sample:
-                st.audio(audio_path, format="audio/wav")
+uploaded_file = st.file_uploader("Upload audio recording (WAV format)", type=["wav"])
 
-    if audio_path is not None:
-        with st.spinner("Analyzing audio sample..."):
-            if model_data and model_data.get("mode", "stats") == "image":
-                img, y, duration = extract_spectrogram(audio_path)
-                feat_dict = None
-            else:
-                feat_dict, y, duration = extract_features_stats(audio_path)
-                img = None
-                
-        if uploaded_file is not None:
-            try:
-                os.unlink(audio_path)
-            except Exception:
-                pass
-                
-        if img is not None or feat_dict is not None:
-            st.markdown("#### Waveform Analysis")
-            fig, ax = plt.subplots(figsize=(8, 1.8), facecolor='none')
-            ax.plot(np.linspace(0, duration, len(y)), y, color='#475569', alpha=0.9, lw=0.5)
-            ax.set_facecolor('none')
-            ax.axis('off')
-            plt.tight_layout(pad=0)
-            st.pyplot(fig)
-            
-            st.markdown("#### Sample Metadata")
-            meta_col1, meta_col2 = st.columns(2)
-            with meta_col1:
-                st.caption(f"Duration: {duration:.2f}s")
-            with meta_col2:
-                st.caption(f"Sample Rate: 16 kHz")
+if uploaded_file is not None:
+    st.audio(uploaded_file, format="audio/wav")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        audio_path = tmp_file.name
+else:
+    mock_fake = "data/mock/fake/deepfake_0.wav"
+    mock_real = "data/mock/real/genuine_0.wav"
+    if os.path.exists(mock_fake) and os.path.exists(mock_real):
+        sample_choice = st.selectbox(
+            "Or select a sample file to test:",
+            ["None", "Mock Synthetic (Deepfake)", "Mock Authentic (Genuine)"]
+        )
+        if sample_choice == "Mock Synthetic (Deepfake)":
+            audio_path = mock_fake
+            is_sample = True
+        elif sample_choice == "Mock Authentic (Genuine)":
+            audio_path = mock_real
+            is_sample = True
+        if is_sample:
+            st.audio(audio_path, format="audio/wav")
 
-with col_right:
-    st.markdown("### Classification Analysis")
-    
-    if audio_path is None:
-        st.info("Upload an audio recording or select a sample file to perform authentication.")
-    elif model_data is None:
-        st.error("Classification model not initialized. Please train the model first.")
-    else:
-        # Run inference
-        mode = model_data.get("mode", "stats")
-        pred_label = None
-        
-        if mode == "image":
-            cnn_model = load_neural_network(model_data["model_path"])
-            if cnn_model is not None:
-                X = np.expand_dims(img, axis=0)
-                X = np.expand_dims(X, axis=-1)
-                prob = cnn_model.predict(X, verbose=0).flatten()[0]
-                
-                if prob >= 0.5:
-                    pred_label = 1
-                    confidence = prob
-                else:
-                    pred_label = 0
-                    confidence = 1.0 - prob
-            else:
-                st.error("Could not load neural network weights.")
+if audio_path is not None:
+    with st.spinner("Analyzing audio sample..."):
+        if model_data and model_data.get("mode", "stats") == "image":
+            img, y, duration = extract_spectrogram(audio_path)
+            feat_dict = None
         else:
-            model = model_data["model"]
-            scaler = model_data["scaler"]
-            feature_cols = model_data["feature_cols"]
+            feat_dict, y, duration = extract_features_stats(audio_path)
+            img = None
             
-            df_single = pd.DataFrame([feat_dict])
-            for col in feature_cols:
-                if col not in df_single.columns:
-                    df_single[col] = 0.0
-            X = df_single[feature_cols].values
-            X_scaled = scaler.transform(X)
+    if uploaded_file is not None:
+        try:
+            os.unlink(audio_path)
+        except Exception:
+            pass
             
-            pred_label = model.predict(X_scaled)[0]
-            probs = model.predict_proba(X_scaled)[0]
-            confidence = probs[pred_label]
+    if img is not None or feat_dict is not None:
+        if model_data is None:
+            st.error("Classification model not initialized. Please train the model first.")
+        else:
+            mode = model_data.get("mode", "stats")
+            pred_label = None
             
-        if pred_label is not None:
-            if is_sample:
-                st.caption(f"Analyzing sample: **{os.path.basename(audio_path)}**")
-                
-            if pred_label == 0:
-                st.markdown(f"""
-                <div class="result-box authentic">
-                    <div class="result-label">Classification</div>
-                    <div class="result-status">Authentic Voice</div>
-                    <div class="result-confidence">Confidence Score: {confidence * 100:.2f}%</div>
-                    <div class="result-desc">The acoustic properties of this sample are consistent with genuine, natural human speech. No anomalous vocal signatures were detected.</div>
-                </div>
-                """, unsafe_allow_html=True)
+            if mode == "image":
+                cnn_model = load_neural_network(model_data["model_path"])
+                if cnn_model is not None:
+                    X = np.expand_dims(img, axis=0)
+                    X = np.expand_dims(X, axis=-1)
+                    prob = cnn_model.predict(X, verbose=0).flatten()[0]
+                    
+                    if prob >= 0.5:
+                        pred_label = 1
+                        confidence = prob
+                    else:
+                        pred_label = 0
+                        confidence = 1.0 - prob
+                else:
+                    st.error("Could not load neural network weights.")
             else:
-                st.markdown(f"""
-                <div class="result-box synthetic">
-                    <div class="result-label">Classification</div>
-                    <div class="result-status">Synthetic / AI-Generated</div>
-                    <div class="result-confidence">Confidence Score: {confidence * 100:.2f}%</div>
-                    <div class="result-desc">Acoustic markers show patterns characteristic of digital voice synthesis or vocoder artifacts. High probability of deepfake audio.</div>
-                </div>
-                """, unsafe_allow_html=True)
+                model = model_data["model"]
+                scaler = model_data["scaler"]
+                feature_cols = model_data["feature_cols"]
+                
+                df_single = pd.DataFrame([feat_dict])
+                for col in feature_cols:
+                    if col not in df_single.columns:
+                        df_single[col] = 0.0
+                X = df_single[feature_cols].values
+                X_scaled = scaler.transform(X)
+                
+                pred_label = model.predict(X_scaled)[0]
+                probs = model.predict_proba(X_scaled)[0]
+                confidence = probs[pred_label]
+                
+            if pred_label is not None:
+                if is_sample:
+                    st.caption(f"Analyzing sample: **{os.path.basename(audio_path)}**")
+                    
+                if pred_label == 0:
+                    st.markdown(f"""
+                    <div class="result-box authentic">
+                        <div class="result-label">Classification</div>
+                        <div class="result-status">Authentic Voice</div>
+                        <div class="result-confidence">Confidence Score: {confidence * 100:.2f}%</div>
+                        <div class="result-desc">The acoustic properties of this sample are consistent with genuine, natural human speech. No anomalous vocal signatures were detected.</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="result-box synthetic">
+                        <div class="result-label">Classification</div>
+                        <div class="result-status">Synthetic / AI-Generated</div>
+                        <div class="result-confidence">Confidence Score: {confidence * 100:.2f}%</div>
+                        <div class="result-desc">Acoustic markers show patterns characteristic of digital voice synthesis or vocoder artifacts. High probability of deepfake audio.</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("#### Waveform Analysis")
+                fig, ax = plt.subplots(figsize=(8, 1.8), facecolor='none')
+                ax.plot(np.linspace(0, duration, len(y)), y, color='#475569', alpha=0.9, lw=0.5)
+                ax.set_facecolor('none')
+                ax.axis('off')
+                plt.tight_layout(pad=0)
+                st.pyplot(fig)
+                
+                st.markdown("#### Sample Metadata")
+                meta_col1, meta_col2 = st.columns(2)
+                with meta_col1:
+                    st.caption(f"Duration: {duration:.2f}s")
+                with meta_col2:
+                    st.caption(f"Sample Rate: 16 kHz")
 
 st.markdown("---")
 
-st.markdown("### Pipeline Details")
-t_col1, t_col2 = st.columns(2)
-with t_col1:
+with st.expander("Verification pipeline details"):
     st.markdown("**1. Feature Representation**")
     st.write("Converts input signals into normalized representations (either multi-moment cepstral matrices or scaled Mel-spectrogram tensors).")
-with t_col2:
     st.markdown("**2. Binary Classifier**")
     st.write("Applies the trained model to identify temporal anomalies and boundary inconsistencies left by voice synthesizers.")
