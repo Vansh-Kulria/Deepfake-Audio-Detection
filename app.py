@@ -13,7 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom styles leveraging Streamlit's native theme properties
 st.markdown("""
 <style>
     .header-container {
@@ -74,11 +73,6 @@ st.markdown("""
         opacity: 0.7;
         line-height: 1.5;
         margin-top: 10px;
-    }
-    .metric-text {
-        font-size: 13px;
-        color: var(--text-color);
-        opacity: 0.8;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -186,92 +180,113 @@ model_data = load_metadata()
 
 col_left, col_right = st.columns([6, 5])
 
+audio_path = None
+is_sample = False
+
 with col_left:
     st.markdown("### Audio Source")
     uploaded_file = st.file_uploader("Upload audio recording (WAV format)", type=["wav"])
     
     if uploaded_file is not None:
         st.audio(uploaded_file, format="audio/wav")
-        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
             tmp_file.write(uploaded_file.read())
-            tmp_file_path = tmp_file.name
-            
+            audio_path = tmp_file.name
+    else:
+        mock_fake = "data/mock/fake/deepfake_0.wav"
+        mock_real = "data/mock/real/genuine_0.wav"
+        if os.path.exists(mock_fake) and os.path.exists(mock_real):
+            sample_choice = st.selectbox(
+                "Or choose a sample file to test:",
+                ["None", "Mock Synthetic (Deepfake)", "Mock Authentic (Genuine)"]
+            )
+            if sample_choice == "Mock Synthetic (Deepfake)":
+                audio_path = mock_fake
+                is_sample = True
+            elif sample_choice == "Mock Authentic (Genuine)":
+                audio_path = mock_real
+                is_sample = True
+            if is_sample:
+                st.audio(audio_path, format="audio/wav")
+
+    if audio_path is not None:
         with st.spinner("Analyzing audio sample..."):
             if model_data and model_data.get("mode", "stats") == "image":
-                img, y, duration = extract_spectrogram(tmp_file_path)
+                img, y, duration = extract_spectrogram(audio_path)
                 feat_dict = None
             else:
-                feat_dict, y, duration = extract_features_stats(tmp_file_path)
+                feat_dict, y, duration = extract_features_stats(audio_path)
                 img = None
                 
-        try:
-            os.unlink(tmp_file_path)
-        except Exception:
-            pass
-            
-        if (img is not None or feat_dict is not None) and model_data is not None:
-            mode = model_data.get("mode", "stats")
-            
-            if mode == "image":
-                cnn_model = load_neural_network(model_data["model_path"])
-                if cnn_model is not None:
-                    X = np.expand_dims(img, axis=0)
-                    X = np.expand_dims(X, axis=-1)
-                    prob = cnn_model.predict(X, verbose=0).flatten()[0]
-                    
-                    if prob >= 0.5:
-                        pred_label = 1
-                        confidence = prob
-                        probs = [1.0 - prob, prob]
-                    else:
-                        pred_label = 0
-                        confidence = 1.0 - prob
-                        probs = [1.0 - prob, prob]
-                else:
-                    st.error("Could not load neural network weights.")
-                    pred_label = None
-            else:
-                model = model_data["model"]
-                scaler = model_data["scaler"]
-                feature_cols = model_data["feature_cols"]
+        if uploaded_file is not None:
+            try:
+                os.unlink(audio_path)
+            except Exception:
+                pass
                 
-                df_single = pd.DataFrame([feat_dict])
-                for col in feature_cols:
-                    if col not in df_single.columns:
-                        df_single[col] = 0.0
-                X = df_single[feature_cols].values
-                X_scaled = scaler.transform(X)
-                
-                pred_label = model.predict(X_scaled)[0]
-                probs = model.predict_proba(X_scaled)[0]
-                confidence = probs[pred_label]
+        if img is not None or feat_dict is not None:
+            st.markdown("#### Waveform Analysis")
+            fig, ax = plt.subplots(figsize=(8, 1.8), facecolor='none')
+            ax.plot(np.linspace(0, duration, len(y)), y, color='#475569', alpha=0.9, lw=0.5)
+            ax.set_facecolor('none')
+            ax.axis('off')
+            plt.tight_layout(pad=0)
+            st.pyplot(fig)
             
-            if pred_label is not None:
-                st.markdown("#### Waveform Analysis")
-                fig, ax = plt.subplots(figsize=(8, 1.8), facecolor='none')
-                ax.plot(np.linspace(0, duration, len(y)), y, color='#475569', alpha=0.9, lw=0.5)
-                ax.set_facecolor('none')
-                ax.axis('off')
-                plt.tight_layout(pad=0)
-                st.pyplot(fig)
-                
-                st.markdown("#### Sample Metadata")
-                meta_col1, meta_col2 = st.columns(2)
-                with meta_col1:
-                    st.caption(f"Duration: {duration:.2f}s")
-                with meta_col2:
-                    st.caption(f"Sample Rate: 16 kHz")
+            st.markdown("#### Sample Metadata")
+            meta_col1, meta_col2 = st.columns(2)
+            with meta_col1:
+                st.caption(f"Duration: {duration:.2f}s")
+            with meta_col2:
+                st.caption(f"Sample Rate: 16 kHz")
 
 with col_right:
     st.markdown("### Classification Analysis")
     
-    if uploaded_file is None:
-        st.info("Upload an audio recording to perform authentication.")
+    if audio_path is None:
+        st.info("Upload an audio recording or select a sample file to perform authentication.")
     elif model_data is None:
         st.error("Classification model not initialized. Please train the model first.")
     else:
+        # Run inference
+        mode = model_data.get("mode", "stats")
+        pred_label = None
+        
+        if mode == "image":
+            cnn_model = load_neural_network(model_data["model_path"])
+            if cnn_model is not None:
+                X = np.expand_dims(img, axis=0)
+                X = np.expand_dims(X, axis=-1)
+                prob = cnn_model.predict(X, verbose=0).flatten()[0]
+                
+                if prob >= 0.5:
+                    pred_label = 1
+                    confidence = prob
+                else:
+                    pred_label = 0
+                    confidence = 1.0 - prob
+            else:
+                st.error("Could not load neural network weights.")
+        else:
+            model = model_data["model"]
+            scaler = model_data["scaler"]
+            feature_cols = model_data["feature_cols"]
+            
+            df_single = pd.DataFrame([feat_dict])
+            for col in feature_cols:
+                if col not in df_single.columns:
+                    df_single[col] = 0.0
+            X = df_single[feature_cols].values
+            X_scaled = scaler.transform(X)
+            
+            pred_label = model.predict(X_scaled)[0]
+            probs = model.predict_proba(X_scaled)[0]
+            confidence = probs[pred_label]
+            
         if pred_label is not None:
+            if is_sample:
+                st.caption(f"Analyzing sample: **{os.path.basename(audio_path)}**")
+                
             if pred_label == 0:
                 st.markdown(f"""
                 <div class="result-box authentic">
@@ -293,7 +308,7 @@ with col_right:
 
 st.markdown("---")
 
-st.markdown("### Pipeline Pipeline Details")
+st.markdown("### Pipeline Details")
 t_col1, t_col2 = st.columns(2)
 with t_col1:
     st.markdown("**1. Feature Representation**")
