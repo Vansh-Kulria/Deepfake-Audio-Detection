@@ -240,7 +240,8 @@ if audio_path is not None:
                     X = np.expand_dims(X, axis=-1)
                     prob = cnn_model.predict(X, verbose=0).flatten()[0]
                     
-                    if prob >= 0.5:
+                    threshold = model_data.get("threshold", 0.5)
+                    if prob >= threshold:
                         pred_label = 1
                         confidence = prob
                     else:
@@ -260,9 +261,15 @@ if audio_path is not None:
                 X = df_single[feature_cols].values
                 X_scaled = scaler.transform(X)
                 
-                pred_label = model.predict(X_scaled)[0]
+                threshold = model_data.get("threshold", 0.5)
                 probs = model.predict_proba(X_scaled)[0]
-                confidence = probs[pred_label]
+                prob_synthetic = probs[1]
+                if prob_synthetic >= threshold:
+                    pred_label = 1
+                    confidence = prob_synthetic
+                else:
+                    pred_label = 0
+                    confidence = 1.0 - prob_synthetic
                 
             if pred_label is not None:
                 if is_sample:

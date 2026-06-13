@@ -70,6 +70,7 @@ def train_tabular_model(train_features_path, val_features_path, model_type):
         "scaler": scaler,
         "feature_cols": feature_cols,
         "model_type": model_type,
+        "threshold": float(threshold),
         "val_metrics": {
             "accuracy": acc, "f1": f1, "eer": eer,
             "genuine_acc": real_acc, "deepfake_acc": fake_acc, "cm": cm.tolist()
@@ -145,6 +146,7 @@ def train_cnn_model(train_images_path, train_labels_path, val_images_path, val_l
         "mode": "image",
         "model_path": cnn_path,
         "model_type": "cnn",
+        "threshold": float(threshold),
         "val_metrics": {
             "accuracy": acc, "f1": f1, "eer": eer,
             "genuine_acc": real_acc, "deepfake_acc": fake_acc, "cm": cm.tolist()

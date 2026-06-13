@@ -104,7 +104,8 @@ def predict_audio(file_path, model_path="models/detector.pkl"):
         
         prob = model.predict(X, verbose=0).flatten()[0]
         
-        if prob >= 0.5:
+        threshold = model_data.get("threshold", 0.5)
+        if prob >= threshold:
             pred_class = "Synthetic (AI-Generated)"
             confidence = prob
         else:
@@ -130,11 +131,19 @@ def predict_audio(file_path, model_path="models/detector.pkl"):
         X = df_single[feature_cols].values
         X_scaled = scaler.transform(X)
         
-        pred_label = model.predict(X_scaled)[0]
+        threshold = model_data.get("threshold", 0.5)
         probs = model.predict_proba(X_scaled)[0]
+        prob_synthetic = probs[1]
+        
+        if prob_synthetic >= threshold:
+            pred_label = 1
+            confidence = prob_synthetic
+        else:
+            pred_label = 0
+            confidence = 1.0 - prob_synthetic
         
         class_map = {0: "Genuine (Human)", 1: "Synthetic (AI-Generated)"}
-        return class_map[pred_label], probs[pred_label]
+        return class_map[pred_label], confidence
 
 def main():
     parser = argparse.ArgumentParser(description="Predict if a wav file is Genuine (Human) or Synthetic (AI-Generated)")
