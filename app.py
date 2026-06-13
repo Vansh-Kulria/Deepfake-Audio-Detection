@@ -98,30 +98,64 @@ def load_neural_network(weights_path):
 
 def extract_spectrogram(file_path):
     try:
-        y, sr = librosa.load(file_path, sr=16000)
-        if len(y) == 0:
+        y_full, sr = librosa.load(file_path, sr=16000)
+        if len(y_full) == 0:
             return None, None, 0
             
-        target_len = 16000 * 2
-        if len(y) < target_len:
-            y = np.pad(y, (0, target_len - len(y)), mode='constant')
+        duration = librosa.get_duration(y=y_full, sr=sr)
+        segment_len = 16000 * 2
+        
+        segments = []
+        if len(y_full) <= segment_len:
+            padded = np.pad(y_full, (0, segment_len - len(y_full)), mode='constant')
+            segments.append(padded)
         else:
-            y = y[:target_len]
-            
-        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, n_fft=1024, hop_length=256)
-        S_db = librosa.power_to_db(S, ref=np.max)
+            num_segments = len(y_full) // segment_len
+            for idx in range(num_segments):
+                segments.append(y_full[idx * segment_len : (idx + 1) * segment_len])
+                
+            remainder = len(y_full) % segment_len
+            if remainder > 16000:
+                trailing = y_full[-remainder:]
+                padded = np.pad(trailing, (0, segment_len - len(trailing)), mode='constant')
+                segments.append(padded)
+                
+        segments = segments[:15]
         
-        if S_db.shape[1] < 128:
-            diff = 128 - S_db.shape[1]
-            S_db = np.pad(S_db, ((0, 0), (0, diff)), mode='constant')
-        elif S_db.shape[1] > 128:
-            S_db = S_db[:, :128]
+        spectrograms = []
+        for seg in segments:
+            if np.max(np.abs(seg)) < 0.01:
+                continue
+                
+            S = librosa.feature.melspectrogram(y=seg, sr=sr, n_mels=128, n_fft=1024, hop_length=256)
+            S_db = librosa.power_to_db(S, ref=np.max)
             
-        S_db = (S_db + 40.0) / 40.0
-        S_db = np.clip(S_db, -1.0, 1.0)
-        
-        duration = librosa.get_duration(y=y, sr=sr)
-        return S_db, y, duration
+            if S_db.shape[1] < 128:
+                diff = 128 - S_db.shape[1]
+                S_db = np.pad(S_db, ((0, 0), (0, diff)), mode='constant')
+            else:
+                S_db = S_db[:, :128]
+                
+            S_db = (S_db + 40.0) / 40.0
+            S_db = np.clip(S_db, -1.0, 1.0)
+            spectrograms.append(S_db)
+            
+        if not spectrograms:
+            seg = y_full[:segment_len]
+            if len(seg) < segment_len:
+                seg = np.pad(seg, (0, segment_len - len(seg)), mode='constant')
+            S = librosa.feature.melspectrogram(y=seg, sr=sr, n_mels=128, n_fft=1024, hop_length=256)
+            S_db = librosa.power_to_db(S, ref=np.max)
+            if S_db.shape[1] < 128:
+                diff = 128 - S_db.shape[1]
+                S_db = np.pad(S_db, ((0, 0), (0, diff)), mode='constant')
+            else:
+                S_db = S_db[:, :128]
+            S_db = (S_db + 40.0) / 40.0
+            S_db = np.clip(S_db, -1.0, 1.0)
+            spectrograms.append(S_db)
+            
+        return spectrograms, y_full, duration
     except Exception:
         return None, None, 0
 
@@ -214,11 +248,11 @@ else:
 if audio_path is not None:
     with st.spinner("Analyzing audio sample..."):
         if model_data and model_data.get("mode", "stats") == "image":
-            img, y, duration = extract_spectrogram(audio_path)
+            img_list, y, duration = extract_spectrogram(audio_path)
             feat_dict = None
         else:
             feat_dict, y, duration = extract_features_stats(audio_path)
-            img = None
+            img_list = None
             
     if uploaded_file is not None:
         try:
@@ -226,7 +260,7 @@ if audio_path is not None:
         except Exception:
             pass
             
-    if img is not None or feat_dict is not None:
+    if img_list is not None or feat_dict is not None:
         if model_data is None:
             st.error("Classification model not initialized. Please train the model first.")
         else:
@@ -236,9 +270,14 @@ if audio_path is not None:
             if mode == "image":
                 cnn_model = load_neural_network(model_data["model_path"])
                 if cnn_model is not None:
-                    X = np.expand_dims(img, axis=0)
-                    X = np.expand_dims(X, axis=-1)
-                    prob = cnn_model.predict(X, verbose=0).flatten()[0]
+                    probs = []
+                    for img in img_list:
+                        X = np.expand_dims(img, axis=0)
+                        X = np.expand_dims(X, axis=-1)
+                        prob = cnn_model.predict(X, verbose=0).flatten()[0]
+                        probs.append(prob)
+                    
+                    prob = max(probs) if probs else 0.0
                     
                     threshold = model_data.get("threshold", 0.5)
                     if prob >= threshold:
