@@ -12,3 +12,4 @@ seaborn>=0.13.2
 kagglehub>=1.0.2
 tqdm>=4.68.1
 joblib>=1.5.3
+tensorflow
